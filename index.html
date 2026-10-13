@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#030611">
+    <title>Air Hockey Pro — VK Play</title>
+    <link rel="icon" type="image/png" href="icon-192.png">
+    <link rel="manifest" href="manifest.json">
+
+    <!-- VK Bridge SDK v2 -->
+    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/vk-bridge.umd.js"></script>
+
+    <!-- Three.js 3D WebGL Engine & Post-processing -->
+    <script src="three.min.js"></script>
+    <script src="postprocessing.js"></script>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ─── Верхний интерфейс HUD ─────────────────────── -->
+<div id="top-hud">
+    <div class="hud-group">
+        <!-- Кнопка возврата в меню -->
+        <button id="btn-home" class="icon-btn" title="В меню" style="display: none;">
+            <svg class="svg-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+            </svg>
+        </button>
+
+        <!-- Кнопка паузы матча -->
+        <button id="btn-pause" class="icon-btn" title="Пауза" style="display: none;">
+            <svg class="svg-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16" rx="1.5"></rect>
+                <rect x="14" y="4" width="4" height="16" rx="1.5"></rect>
+            </svg>
+        </button>
+
+        <!-- Баланс монет -->
+        <div class="coins-badge">
+            <svg class="svg-icon svg-coin" viewBox="0 0 24 24" width="18" height="18" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="#ffca28" stroke-width="2" fill="#ff9800" fill-opacity="0.2"/>
+                <circle cx="12" cy="12" r="6" stroke="#ffca28" stroke-width="1.5"/>
+                <text x="12" y="15" text-anchor="middle" font-size="9" font-weight="900" fill="#ffca28">C</text>
+            </svg>
+            <span id="hud-coins">0</span>
+            <button id="btn-free-coins" class="btn-add-coins" title="+150 монет">+</button>
+        </div>
+    </div>
+
+    <!-- Табло текущего счёта в матче -->
+    <div id="hud-scoreboard" class="hud-scoreboard" style="display: none;">
+        <div class="score-team p2-side">
+            <span id="hud-p2-flag" class="hud-rival-flag" style="display: none;"></span>
+            <span class="score-label" id="hud-p2-name">БОТ</span>
+            <span id="hud-p2-ping" class="hud-rival-ping" style="display: none;">24 ms</span>
+            <span class="score-num p2-num" id="hud-p2-score">0</span>
+        </div>
+        <div class="score-colon">:</div>
+        <div class="score-team p1-side">
+            <span class="score-num p1-num" id="hud-p1-score">0</span>
+            <span class="score-label" id="hud-p1-name">ВЫ</span>
+            <span id="hud-p1-division" class="hud-player-div" style="display: none;"></span>
+        </div>
+    </div>
+
+    <div class="hud-group">
+        <!-- Выбор арены -->
+        <button id="btn-arenas-hud" class="icon-btn" title="Арены">
+            <svg class="svg-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="3"></rect>
+                <line x1="12" y1="4" x2="12" y2="20"></line>
+                <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+        </button>
+
+        <!-- Переключатель языка -->
+        <button id="btn-lang" class="icon-btn" title="Язык">RU</button>
+
+        <!-- Музыка Synthwave вкл / выкл -->
+        <button id="btn-music" class="icon-btn active" title="Музыка Synthwave">
+            <svg id="svg-music-icon" class="svg-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+            </svg>
+        </button>
+
+        <!-- Звук вкл / выкл -->
+        <button id="btn-mute" class="icon-btn" title="Звук">
+            <svg id="svg-sound-icon" class="svg-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+            </svg>
+        </button>
+    </div>
+</div>
+
+<!-- ─── Игровой стол ───────────────────────────────── -->
+<div id="game-wrapper">
+    <canvas id="gameCanvas"></canvas>
+</div>
+
+<!-- Вспышка экрана при голе -->
+<div id="goal-flash"></div>
+
+<!-- Оверлей кинематографичного повтора (Instant Replay) -->
+<div id="replay-hud" class="replay-hud" style="display: none;">
+    <div class="replay-letterbox replay-letterbox-top"></div>
+    <div class="replay-badge">
+        <svg class="svg-icon svg-rec-dot" viewBox="0 0 24 24" width="14" height="14" fill="#ff2a55">
+            <circle cx="12" cy="12" r="8"></circle>
+        </svg>
+        <span class="replay-badge-text" data-i18n="replay_title">ПОВТОР</span>
+    </div>
+    <button id="btn-skip-replay" class="btn-skip-replay" data-i18n="btn_skip_replay">Пропустить</button>
+    <div class="replay-letterbox replay-letterbox-bottom"></div>
+</div>
+
+<!-- Тост-уведомление о полученном достижении -->
+<div id="toast-achievement" class="toast-achievement" style="display: none;">
+    <div class="toast-achievement-icon">
+        <svg class="svg-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#ffca28" stroke-width="2">
+            <circle cx="12" cy="8" r="7"></circle>
+            <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline>
+        </svg>
+    </div>
+    <div class="toast-achievement-content">
+        <div class="toast-achievement-sub" data-i18n="toast_ach_unlocked">ДОСТИЖЕНИЕ РАЗБЛОКИРОВАНО!</div>
+        <div id="toast-achievement-title" class="toast-achievement-title">Снайпер</div>
+    </div>
+</div>
+
+<!-- Панель Ультимейт-удара (Супер-Выстрел) -->
+<div id="hud-ultimate" class="hud-ultimate" style="display: none;">
+    <div class="ultimate-bar-wrap">
+        <div id="ultimate-bar" class="ultimate-bar" style="width: 0%;"></div>
+    </div>
+    <button id="btn-ultimate" class="btn-ultimate" title="Удар Молнии (Пробел / Тап)">
+        <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+        </svg>
+        <span class="ultimate-text" data-i18n="ultimate_label">УЛЬТА</span>
+    </button>
+</div>
+
+<!-- Всплывающий аркадный анонсер событий -->
+<div id="hud-announcer" class="hud-announcer">
+    <div id="hud-announcer-text" class="announcer-text">ГОЛ!</div>
+</div>
+
+<!-- Оповещение о спец-способности босса -->
+<div id="hud-boss-badge" class="hud-boss-badge" style="display: none;">
+    <div id="hud-boss-badge-icon" class="boss-badge-icon">
+        <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+        </svg>
+    </div>
+    <div id="hud-boss-badge-text" class="boss-badge-text">ТУРБО-РЫВОК!</div>
+</div>
+
+<!-- Верхний HUD режима испытаний (Трюк-шоты) -->
+<div id="hud-trickshot" class="hud-trickshot" style="display: none;">
+    <div class="trickshot-hud-level" id="hud-ts-level">УРОВЕНЬ 1</div>
+    <div class="trickshot-hud-shots">
+        <span data-i18n="trickshot_shots">Выстрелы</span>: <span id="hud-ts-shots" class="trickshot-shots-val">3 / 3</span>
+    </div>
+</div>
+
+<!-- ══════════════════ 1.5. МЕНЮ ПАУЗЫ ══════════════════ -->
+<div id="overlay-pause" class="overlay">
+    <div class="card pause-modal-card">
+        <div class="card-title">
+            <span data-i18n="pause_title">ПАУЗА</span>
+        </div>
+        <div class="card-sub" data-i18n="pause_sub">Матч приостановлен</div>
+
+        <div class="pause-score-box">
+            <span id="pause-score-p1" class="pause-score-num p1-num">0</span>
+            <span class="pause-score-colon">:</span>
+            <span id="pause-score-p2" class="pause-score-num p2-num">0</span>
+        </div>
+
+        <div class="pause-actions-stack">
+            <button id="btn-pause-resume" class="btn btn-primary">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                <span data-i18n="btn_resume">ПРОДОЛЖИТЬ</span>
+            </button>
+            <button id="btn-pause-restart" class="btn btn-secondary">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+                <span data-i18n="btn_again">ЗАНОВО</span>
+            </button>
+            <button id="btn-pause-menu" class="btn btn-secondary">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+                <span data-i18n="btn_to_menu">В ГЛАВНОЕ МЕНЮ</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ 1. ГЛАВНОЕ МЕНЮ ══════════════ -->
+<div id="overlay-menu" class="overlay active">
+    <div class="card">
+        <div class="card-title">AIR HOCKEY<br><span style="font-size: 0.65em; color: var(--neon-cyan);">ULTIMATE</span></div>
+        <div class="card-sub" data-i18n="menu_subtitle">Выбери режим и забей 7 шайб быстрее соперника!</div>
+
+        <!-- Сетка режимов -->
+        <div class="modes-grid">
+            <div class="mode-card selected" data-mode="ai">
+                <!-- Векторная иконка: Бот -->
+                <svg class="mode-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+                    <circle cx="12" cy="5" r="2"></circle>
+                    <path d="M12 7v4"></path>
+                    <line x1="8" y1="16" x2="8.01" y2="16" stroke-width="2.5"></line>
+                    <line x1="16" y1="16" x2="16.01" y2="16" stroke-width="2.5"></line>
+                </svg>
+                <div class="mode-title" data-i18n="mode_vs_ai">Против Бота</div>
+                <div class="mode-desc" data-i18n="mode_vs_ai_desc">Быстрая игра</div>
+            </div>
+
+            <div class="mode-card" data-mode="pvp">
+                <!-- Векторная иконка: 2 Игрока -->
+                <svg class="mode-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                <div class="mode-title" data-i18n="mode_2p">На Двоих</div>
+                <div class="mode-desc" data-i18n="mode_2p_desc">На одном экране</div>
+            </div>
+
+            <div class="mode-card mode-card-ranked" data-mode="ranked">
+                <!-- Векторная иконка: Щит и Звезда Рейтинга -->
+                <svg class="mode-icon-svg svg-ranked-glow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L3 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z"></path>
+                    <polygon points="12 6 13.5 9.5 17 9.5 14 11.8 15.2 15.2 12 13 8.8 15.2 10 11.8 7 9.5 10.5 9.5" fill="currentColor" stroke="none"></polygon>
+                </svg>
+                <div class="mode-title" data-i18n="mode_ranked">Рейтинг Онлайн</div>
+                <div class="mode-desc" data-i18n="mode_ranked_desc">P2P и Ранкед</div>
+            </div>
+
+            <div class="mode-card" data-mode="tournament">
+                <!-- Векторная иконка: Кубок -->
+                <svg class="mode-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6 9H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3"></path>
+                    <path d="M18 9h3a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-3"></path>
+                    <path d="M6 3h12v7a6 6 0 0 1-12 0V3z"></path>
+                    <path d="M9 21h6"></path>
+                    <path d="M12 16v5"></path>
+                </svg>
+                <div class="mode-title" data-i18n="mode_tourney">Турнир</div>
+                <div class="mode-desc" data-i18n="mode_tourney_desc">Кубок чемпионов</div>
+            </div>
+
+            <div class="mode-card" data-mode="trickshot">
+                <!-- Векторная иконка: Прицел / Испытания -->
+                <svg class="mode-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="9"></circle>
+                    <circle cx="12" cy="12" r="4"></circle>
+                    <line x1="12" y1="1" x2="12" y2="5"></line>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="1" y1="12" x2="5" y2="12"></line>
+                    <line x1="19" y1="12" x2="23" y2="12"></line>
+                </svg>
+                <div class="mode-title" data-i18n="mode_trickshot">Испытания</div>
+                <div class="mode-desc" data-i18n="mode_trickshot_desc">Трюк-шоты</div>
+            </div>
+
+            <div class="mode-card" data-mode="trophy">
+                <!-- Векторная иконка: Трофейная дорога -->
+                <svg class="mode-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6 9H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3"></path>
+                    <path d="M18 9h3a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-3"></path>
+                    <path d="M6 3h12v7a6 6 0 0 1-12 0V3z"></path>
+                    <path d="M9 21h6"></path>
+                    <path d="M12 16v5"></path>
+                    <polygon points="12 6 13 8.5 15.5 8.5 13.5 10 14.5 12.5 12 11 9.5 12.5 10.5 10 8.5 8.5 11 8.5" fill="currentColor" stroke="none"></polygon>
+                </svg>
+                <div class="mode-title" data-i18n="mode_trophy">Путь Чемпиона</div>
+                <div class="mode-desc" data-i18n="mode_trophy_desc">Кубки и награды</div>
+            </div>
+
+            <div class="mode-card" data-mode="shop">
+                <!-- Векторная иконка: Магазин -->
+                <svg class="mode-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <path d="M16 10a4 4 0 0 1-8 0"></path>
+                </svg>
+                <div class="mode-title" data-i18n="mode_shop">Магазин</div>
+                <div class="mode-desc" data-i18n="mode_shop_desc">Скины и столы</div>
+            </div>
+        </div>
+
+        <!-- Выбор сложности -->
+        <div id="difficulty-panel">
+            <div class="difficulty-buttons">
+                <button class="btn-diff" data-diff="easy" data-i18n="diff_easy">Легко</button>
+                <button class="btn-diff selected" data-diff="medium" data-i18n="diff_med">Норма</button>
+                <button class="btn-diff" data-diff="hard" data-i18n="diff_hard">Хард</button>
+            </div>
+        </div>
+
+        <button id="btn-start" class="btn btn-primary" data-i18n="btn_play">Играть</button>
+
+        <div class="menu-toggles-row">
+            <!-- Переключатель бонусов -->
+            <div class="toggle-row">
+                <div class="toggle-label">
+                    <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--neon-yellow)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                    </svg>
+                    <span data-i18n="powerups_label">Бонусы на поле</span>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="check-powerups" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <!-- Переключатель фишек арены -->
+            <div class="toggle-row">
+                <div class="toggle-label">
+                    <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--neon-cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="9"></circle>
+                        <path d="M12 3v18"></path>
+                        <path d="M3 12h18"></path>
+                        <circle cx="12" cy="12" r="3" fill="var(--neon-cyan)"></circle>
+                    </svg>
+                    <span data-i18n="hazards_label">Фишки арены</span>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="check-hazards" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <div class="menu-action-row">
+            <button id="btn-open-quests" class="btn btn-secondary action-btn-fourth">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                <span data-i18n="btn_quests">Задания</span>
+            </button>
+            <button id="btn-open-wheel" class="btn btn-secondary action-btn-fourth btn-wheel-trigger">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--neon-yellow)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07L19.07 4.93"></path>
+                </svg>
+                <span data-i18n="btn_wheel">Колесо</span>
+                <span class="wheel-badge-dot" id="wheel-badge-dot" style="display: none;"></span>
+            </button>
+            <button id="btn-open-leaderboard" class="btn btn-secondary action-btn-fourth">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="20" x2="18" y2="10"></line>
+                    <line x1="12" y1="20" x2="12" y2="4"></line>
+                    <line x1="6" y1="20" x2="6" y2="14"></line>
+                </svg>
+                <span data-i18n="btn_leaderboard">Рейтинг</span>
+            </button>
+            <button id="btn-open-arenas" class="btn btn-secondary action-btn-fourth btn-arenas-menu-trigger">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--neon-cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="4" width="20" height="16" rx="3"></rect>
+                    <line x1="12" y1="4" x2="12" y2="20"></line>
+                    <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+                <span data-i18n="btn_arenas">Арены</span>
+            </button>
+        </div>
+
+        <div class="menu-action-row menu-meta-row">
+            <button id="btn-open-battle-pass" class="btn btn-secondary action-btn-half btn-battle-pass-trigger">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#ffd700" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                </svg>
+                <span data-i18n="btn_battle_pass">Боевой Пропуск</span>
+                <span class="bp-level-badge" id="menu-bp-badge">LVL 1</span>
+            </button>
+            <button id="btn-open-achievements" class="btn btn-secondary action-btn-half btn-achievements-trigger">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#00f0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="8" r="7"></circle>
+                    <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline>
+                </svg>
+                <span data-i18n="btn_achievements">Достижения</span>
+                <span class="ach-claimable-badge" id="menu-ach-badge" style="display: none;">0</span>
+            </button>
+        </div>
+
+        <!-- Кнопка добавления ярлыка на рабочий стол (+100 монет) -->
+        <button id="btn-add-shortcut" class="btn-shortcut-banner" style="display: none;">
+            <svg class="svg-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+                <polyline points="9 10 12 13 15 10"></polyline>
+            </svg>
+            <span data-i18n="shortcut_btn">Ярлык на экран (+100)</span>
+        </button>
+    </div>
+</div>
+
+<!-- ══════════════════ 2. ТУРНИРНЫЙ КУБОК ════════════ -->
+<div id="overlay-tournament" class="overlay">
+    <div class="card wide">
+        <div class="card-title"><span data-i18n="tourney_title">ТУРНИРНЫЙ КУБОК</span></div>
+        <div class="card-sub" data-i18n="tourney_sub">Одолей 3-х чемпионов и забери приз: 500 монет!</div>
+
+        <div class="tournament-bracket">
+            <div class="tournament-stage" id="stage-quarter">
+                <div class="stage-info">
+                    <div class="stage-title" data-i18n="stage_1">1/4 Финала</div>
+                    <div class="stage-enemy" data-i18n="stage_enemy_1">Спиди (Турбо-Рывок)</div>
+                </div>
+                <div class="stage-badge" id="badge-quarter">Раунд 1</div>
+            </div>
+
+            <div class="tournament-stage" id="stage-semi">
+                <div class="stage-info">
+                    <div class="stage-title" data-i18n="stage_2">Полуфинал</div>
+                    <div class="stage-enemy" data-i18n="stage_enemy_2">Стена (Силовой Барьер)</div>
+                </div>
+                <div class="stage-badge" id="badge-semi">Раунд 2</div>
+            </div>
+
+            <div class="tournament-stage" id="stage-final">
+                <div class="stage-info">
+                    <div class="stage-title" data-i18n="stage_3">Гранд-Финал</div>
+                    <div class="stage-enemy" data-i18n="stage_enemy_3">Брут (Сейсмо-Удар)</div>
+                </div>
+                <div class="stage-badge" id="badge-final">Финал</div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: center;">
+            <button id="btn-tourney-back" class="btn btn-secondary" data-i18n="btn_back">Назад</button>
+            <button id="btn-tourney-play" class="btn btn-primary" data-i18n="btn_fight">В бой</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ 3. МАГАЗИН СКИНОВ ═════════════ -->
+<div id="overlay-shop" class="overlay">
+    <div class="card wide">
+        <div class="card-title"><span data-i18n="shop_title">МАГАЗИН</span></div>
+        <div class="card-sub" data-i18n="shop_sub">Выбирай биты и арены под свой стиль!</div>
+
+        <div class="shop-tabs">
+            <button class="shop-tab active" data-tab="mallets" data-i18n="tab_mallets">Биты</button>
+            <button class="shop-tab" data-tab="pucks" data-i18n="tab_pucks">Шайбы</button>
+            <button class="shop-tab" data-tab="arenas" data-i18n="tab_arenas">Столы</button>
+            <button class="shop-tab" data-tab="goalfx" data-i18n="tab_goalfx">Голы</button>
+        </div>
+
+        <div class="shop-grid" id="shop-container">
+            <!-- Заполняется кодом -->
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+            <button id="btn-shop-back" class="btn btn-secondary" data-i18n="btn_back">В меню</button>
+            <button id="btn-shop-ad" class="btn btn-reward">+150 монет (Видео)</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ 4. ГОЛ! ═══════════════════════ -->
+<div id="overlay-goal" class="overlay">
+    <div class="card">
+        <div class="goal-text">ГОЛ!</div>
+        <div id="goal-scorer-text" class="goal-scorer">Вы забили!</div>
+    </div>
+</div>
+
+<!-- ══════════════════ 5. КОНЕЦ МАТЧА ════════════════ -->
+<div id="overlay-end" class="overlay">
+    <div class="card">
+        <div id="end-result" class="result-win">ПОБЕДА!</div>
+
+        <div class="final-score-wrap">
+            <div style="font-size: 11px; letter-spacing: 2px; color: rgba(255,255,255,0.5); text-transform: uppercase; margin-bottom: 6px;" data-i18n="score_label">Итоговый счёт</div>
+            <div class="final-score" id="end-score">7 : 3</div>
+        </div>
+
+        <div class="reward-coins-banner">
+            <svg class="svg-icon svg-coin" viewBox="0 0 24 24" width="18" height="18" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="#ffca28" stroke-width="2" fill="#ff9800" fill-opacity="0.2"/>
+                <circle cx="12" cy="12" r="6" stroke="#ffca28" stroke-width="1.5"/>
+                <text x="12" y="15" text-anchor="middle" font-size="9" font-weight="900" fill="#ffca28">C</text>
+            </svg>
+            <span id="end-coins-earned">+50 монет</span>
+        </div>
+
+        <!-- Блок опыта Боевого Пропуска -->
+        <div id="end-xp-banner" class="reward-xp-banner" style="display: none;">
+            <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#00f0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+            <span id="end-xp-earned">+100 XP в Боевой Пропуск!</span>
+        </div>
+
+        <!-- Блок рейтинга (показывается только в Ranked режиме) -->
+        <div id="ranked-end-banner" class="ranked-end-banner" style="display: none;">
+            <div class="ranked-end-delta-wrap">
+                <span id="ranked-end-delta-val" class="ranked-end-delta-val">+32 RP</span>
+                <span id="ranked-end-streak-badge" class="ranked-end-streak-badge" style="display: none;">+10 RP СЕРИЯ</span>
+            </div>
+            <div class="ranked-end-division-row">
+                <span id="ranked-end-division-title" class="ranked-end-division-title">ЗОЛОТО</span>
+                <span id="ranked-end-rp-val" class="ranked-end-rp-val">950 RP</span>
+            </div>
+            <div class="ranked-end-bar-wrap">
+                <div id="ranked-end-bar" class="ranked-end-bar" style="width: 0%;"></div>
+            </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button id="btn-reward-x2" class="btn btn-reward">Удвоить монеты x2 (Видео)</button>
+            <button id="btn-restart" class="btn btn-primary" data-i18n="btn_again">Играть снова</button>
+            <button id="btn-end-home" class="btn btn-secondary" data-i18n="btn_to_menu">В меню</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ 6. ЗАДАНИЯ ════════════════════ -->
+<div id="overlay-quests" class="overlay">
+    <div class="card wide">
+        <div class="card-title"><span data-i18n="quests_title">ЕЖЕДНЕВНЫЕ ЗАДАНИЯ</span></div>
+        <div class="card-sub" data-i18n="quests_sub">Выполняй задания и получай монеты каждый день!</div>
+
+        <div class="quests-list" id="quests-container">
+            <!-- Заполняется динамически через QuestManager -->
+        </div>
+
+        <button id="btn-quests-back" class="btn btn-secondary" data-i18n="btn_back">В меню</button>
+    </div>
+</div>
+
+<!-- ══════════════════ 7. РЕЙТИНГ И ДОСТИЖЕНИЯ ═══════ -->
+<div id="overlay-leaderboard" class="overlay">
+    <div class="card wide">
+        <div class="card-title"><span data-i18n="lead_title">ЗАЛ СЛАВЫ</span></div>
+        <div class="card-sub" data-i18n="lead_sub">Твои рекорды и таблица лидеров</div>
+
+        <div class="lead-stats-box">
+            <div class="lead-stat-item">
+                <div class="lead-stat-val" id="lead-cups">0</div>
+                <div class="lead-stat-lbl" data-i18n="stat_cups">Кубков Турнира</div>
+            </div>
+            <div class="lead-stat-item">
+                <div class="lead-stat-val" id="lead-goals">0</div>
+                <div class="lead-stat-lbl" data-i18n="stat_goals">Забитых Голов</div>
+            </div>
+            <div class="lead-stat-item">
+                <div class="lead-stat-val rank-badge-glow" id="lead-rank">НОВИЧОК</div>
+                <div class="lead-stat-lbl" data-i18n="stat_rank">Звание</div>
+            </div>
+        </div>
+
+        <!-- Контейнер для отображения рейтинга игроков -->
+        <div id="lead-table-container" class="lead-table-container">
+            <!-- Заполняется динамически через Leaderboard API -->
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+            <button id="btn-lead-back" class="btn btn-secondary" data-i18n="btn_back">В меню</button>
+            <button id="btn-lead-trophy-road" class="btn btn-reward" data-i18n="mode_trophy">Путь Чемпиона</button>
+            <button id="btn-vk-lb" class="btn btn-primary" data-i18n="btn_vk_lb">Обновить рейтинг</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ 8. КОЛЕСО УДАЧИ И СТРИК ═══════ -->
+<div id="overlay-wheel" class="overlay">
+    <div class="card wide wheel-modal-card">
+        <div class="card-title"><span data-i18n="wheel_title">КОЛЕСО УДАЧИ</span></div>
+        <div class="card-sub" data-i18n="wheel_sub">Крути рулетку каждый день и забирай награды!</div>
+
+        <!-- 7-дневный стрик наград -->
+        <div class="streak-section">
+            <div class="streak-header">
+                <span data-i18n="streak_title">Серия входов</span>
+                <span class="streak-days-count" id="streak-days-count">1 / 7</span>
+            </div>
+            <div class="daily-streak-track" id="daily-streak-track">
+                <!-- Динамически заполняется -->
+            </div>
+        </div>
+
+        <!-- Сцена колеса с указателем -->
+        <div class="wheel-stage">
+            <div class="wheel-pointer" id="wheel-pointer">
+                <svg viewBox="0 0 24 32" width="28" height="36">
+                    <polygon points="12,30 2,4 22,4" fill="#ffca28" stroke="#ffffff" stroke-width="2"/>
+                </svg>
+            </div>
+            <canvas id="wheel-canvas" width="280" height="280"></canvas>
+            <div class="wheel-center-cap">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#00f0ff" stroke-width="2.5">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                </svg>
+            </div>
+        </div>
+
+        <div class="wheel-prize-banner" id="wheel-prize-banner" style="display: none;"></div>
+
+        <div class="wheel-buttons-row">
+            <button id="btn-wheel-spin-free" class="btn btn-primary btn-spin">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                </svg>
+                <span id="txt-spin-free" data-i18n="spin_free">Крутить бесплатно</span>
+            </button>
+            <button id="btn-wheel-spin-ad" class="btn btn-reward btn-spin">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+                <span data-i18n="spin_ad">Спин за видео</span>
+            </button>
+        </div>
+
+        <button id="btn-wheel-back" class="btn btn-secondary" style="margin-top: 10px;" data-i18n="btn_back">В меню</button>
+    </div>
+</div>
+
+<!-- ══════════════════ 9. РЕЖИМ ИСПЫТАНИЙ: ВЫБОР УРОВНЯ ═══════════════ -->
+<div id="overlay-trickshot" class="overlay">
+    <div class="card wide">
+        <div class="card-title"><span data-i18n="trickshot_title">РЕЖИМ ИСПЫТАНИЙ</span></div>
+        <div class="card-sub" data-i18n="trickshot_sub">Забей шайбу в цель сквозь сложнейшие преграды!</div>
+
+        <div class="trickshot-levels-grid" id="trickshot-levels-grid">
+            <!-- Заполняется динамически -->
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 14px;">
+            <button id="btn-trickshot-back" class="btn btn-secondary" data-i18n="btn_back">В меню</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ 10. РЕЖИМ ИСПЫТАНИЙ: ИТОГ УРОВНЯ ════════════════ -->
+<div id="overlay-trickshot-result" class="overlay">
+    <div class="card">
+        <div id="ts-result-title" class="result-win" data-i18n="trickshot_cleared">УРОВЕНЬ ПРОЙДЕН!</div>
+        <div id="ts-result-sub" class="card-sub">Прямой удар</div>
+
+        <div class="ts-stars-row" id="ts-result-stars">
+            <!-- Динамические SVG звезды -->
+        </div>
+
+        <div class="reward-coins-banner" id="ts-reward-coins-banner">
+            <svg class="svg-icon svg-coin" viewBox="0 0 24 24" width="18" height="18" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="#ffca28" stroke-width="2" fill="#ff9800" fill-opacity="0.2"/>
+                <circle cx="12" cy="12" r="6" stroke="#ffca28" stroke-width="1.5"/>
+                <text x="12" y="15" text-anchor="middle" font-size="9" font-weight="900" fill="#ffca28">C</text>
+            </svg>
+            <span id="ts-reward-coins">+100 монет</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 14px;">
+            <button id="btn-ts-next" class="btn btn-primary" data-i18n="trickshot_next">Следующий уровень</button>
+            <button id="btn-ts-retry" class="btn btn-secondary" data-i18n="trickshot_retry">Повторить</button>
+            <button id="btn-ts-to-levels" class="btn btn-secondary" data-i18n="trickshot_levels_btn">К уровням</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ 11. ПУТЬ ЧЕМПИОНА (ТРОФЕЙНАЯ ДОРОГА) ═════════════ -->
+<div id="overlay-trophy-road" class="overlay">
+    <div class="card wide">
+        <div class="card-title"><span data-i18n="trophy_title">ПУТЬ ЧЕМПИОНА</span></div>
+        <div class="card-sub" data-i18n="trophy_sub">Собирай кубки в турнире и открывай эксклюзивные награды!</div>
+
+        <div class="trophy-road-stats">
+            <div class="trophy-stat-badge">
+                <svg class="svg-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#ffca28" stroke-width="2">
+                    <path d="M6 9H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3"></path>
+                    <path d="M18 9h3a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-3"></path>
+                    <path d="M6 3h12v7a6 6 0 0 1-12 0V3z"></path>
+                    <path d="M9 21h6"></path>
+                    <path d="M12 16v5"></path>
+                </svg>
+                <span id="trophy-road-cups-count">0</span>
+                <span data-i18n="trophy_cups_count">Кубков</span>
+            </div>
+        </div>
+
+        <div class="trophy-road-scroll" id="trophy-road-container">
+            <!-- Заполняется динамически -->
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 14px;">
+            <button id="btn-trophy-back" class="btn btn-secondary" data-i18n="btn_back">В меню</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ 12. ВЫБОР АРЕНЫ ═══════════════ -->
+<div id="overlay-arenas" class="overlay">
+    <div class="card wide arenas-modal-card">
+        <div class="card-title"><span data-i18n="arenas_title">ВЫБОР АРЕНЫ</span></div>
+        <div class="card-sub" data-i18n="arenas_sub">10 уникальных тем с атмосферой, освещением и физикой искр</div>
+
+        <!-- Сетка карточек тем -->
+        <div class="arenas-grid" id="arenas-grid-container">
+            <!-- Заполняется динамически через ThemeManager.renderUI() -->
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 14px;">
+            <button id="btn-arenas-back" class="btn btn-secondary" data-i18n="btn_back">В меню</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ 13. РЕЙТИНГ И ОНЛАЙН P2P (RANKED ARENA) ═══════ -->
+<div id="overlay-ranked" class="overlay">
+    <div class="card wide ranked-modal-card">
+        <!-- Заголовок -->
+        <div class="card-title">
+            <span data-i18n="ranked_title">РЕЙТИНГОВЫЙ СЕЗОН</span>
+        </div>
+        <div class="card-sub" data-i18n="ranked_sub">Сражайся онлайн, побеждай соперников и поднимайся в Грандмастер!</div>
+
+        <!-- 1. Главный экран Ранкеда (Лобби) -->
+        <div id="ranked-view-hub" class="ranked-view active">
+            <!-- Карточка текущего ранга игрока -->
+            <div class="ranked-profile-card">
+                <div class="ranked-emblem-wrap" id="ranked-badge-icon">
+                    <!-- Векторная SVG эмблема генерируется динамически -->
+                </div>
+                <div class="ranked-info-wrap">
+                    <div class="ranked-tier-title" id="ranked-tier-title">БРОНЗА</div>
+                    <div class="ranked-rp-counter"><span id="ranked-current-rp">0</span> <span class="rp-unit">RP</span></div>
+                    <!-- Прогресс-бар до следующего дивизиона -->
+                    <div class="ranked-progress-wrap">
+                        <div class="ranked-progress-bar" id="ranked-progress-bar" style="width: 0%;"></div>
+                    </div>
+                    <div class="ranked-next-tier-sub" id="ranked-next-tier-sub">Следующий ранг: Серебро (400 RP)</div>
+                </div>
+            </div>
+
+            <!-- Статистика игрока -->
+            <div class="ranked-stats-grid">
+                <div class="ranked-stat-box">
+                    <div class="ranked-stat-val" id="ranked-wins-count">0</div>
+                    <div class="ranked-stat-lbl" data-i18n="stat_wins">Побед</div>
+                </div>
+                <div class="ranked-stat-box">
+                    <div class="ranked-stat-val" id="ranked-losses-count">0</div>
+                    <div class="ranked-stat-lbl" data-i18n="stat_losses">Поражений</div>
+                </div>
+                <div class="ranked-stat-box">
+                    <div class="ranked-stat-val" id="ranked-winrate-val">0%</div>
+                    <div class="ranked-stat-lbl" data-i18n="stat_winrate">Винрейт</div>
+                </div>
+                <div class="ranked-stat-box">
+                    <div class="ranked-stat-val" id="ranked-streak-val">0</div>
+                    <div class="ranked-stat-lbl" data-i18n="stat_streak">Серия побед</div>
+                </div>
+            </div>
+
+            <!-- Кнопки действий -->
+            <div class="ranked-actions-stack">
+                <button id="btn-ranked-find-match" class="btn btn-primary btn-ranked-main">
+                    <svg class="svg-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="9"></circle>
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <line x1="12" y1="1" x2="12" y2="5"></line>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="1" y1="12" x2="5" y2="12"></line>
+                        <line x1="19" y1="12" x2="23" y2="12"></line>
+                    </svg>
+                    <span data-i18n="btn_find_match">ИСКАТЬ МАТЧ</span>
+                </button>
+                <button id="btn-ranked-open-rooms" class="btn btn-secondary btn-ranked-sub">
+                    <svg class="svg-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                    <span data-i18n="btn_play_friend">ИГРАТЬ С ДРУГОМ (P2P КОМНАТЫ)</span>
+                </button>
+            </div>
+
+            <!-- Лестница 7 дивизионов -->
+            <div class="ranked-tiers-section">
+                <div class="ranked-tiers-header" data-i18n="ranked_tiers_title">ЛИГИ СЕЗОНА</div>
+                <div class="ranked-tiers-track" id="ranked-tiers-track">
+                    <!-- Заполняется динамически: Бронза, Серебро, Золото, Платина, Алмаз, Мастер, Грандмастер -->
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: center; margin-top: 16px;">
+                <button id="btn-ranked-back" class="btn btn-secondary" data-i18n="btn_back">В меню</button>
+            </div>
+        </div>
+
+        <!-- 2. Экран Поиска Матча (Радар и карточка соперника) -->
+        <div id="ranked-view-search" class="ranked-view" style="display: none;">
+            <div class="ranked-radar-box">
+                <div class="ranked-radar-circle">
+                    <div class="ranked-radar-sweep"></div>
+                    <div class="ranked-radar-ring r1"></div>
+                    <div class="ranked-radar-ring r2"></div>
+                    <div class="ranked-radar-ring r3"></div>
+                    <div class="ranked-radar-center">
+                        <svg class="svg-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--neon-cyan)" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="2" x2="12" y2="22"></line>
+                            <line x1="2" y1="12" x2="22" y2="12"></line>
+                        </svg>
+                    </div>
+                </div>
+                <div class="ranked-search-status" id="ranked-search-status">ПОИСК СОПЕРНИКА...</div>
+                <div class="ranked-search-timer" id="ranked-search-timer">00:01</div>
+            </div>
+
+            <!-- Карточка найденного соперника (появляется при обнаружении) -->
+            <div class="ranked-matchup-card" id="ranked-matchup-card" style="display: none;">
+                <div class="matchup-player matchup-user">
+                    <div class="matchup-flag" id="matchup-user-flag">
+                        <svg viewBox="0 0 24 16" width="24" height="16" class="flag-svg"><rect width="24" height="5.33" fill="#ffffff"/><rect y="5.33" width="24" height="5.33" fill="#0039a6"/><rect y="10.66" width="24" height="5.34" fill="#d52b1e"/></svg>
+                    </div>
+                    <div class="matchup-name" id="matchup-user-name">ВЫ</div>
+                    <div class="matchup-rp" id="matchup-user-rp">0 RP</div>
+                </div>
+                <div class="matchup-vs">VS</div>
+                <div class="matchup-player matchup-rival">
+                    <div class="matchup-flag" id="matchup-rival-flag"></div>
+                    <div class="matchup-name" id="matchup-rival-name">GhostPuck</div>
+                    <div class="matchup-rp" id="matchup-rival-rp">420 RP</div>
+                    <div class="matchup-ping" id="matchup-rival-ping">
+                        <span class="ping-dot"></span>
+                        <span id="matchup-rival-ping-text">24 ms</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="matchup-countdown" id="matchup-countdown" style="display: none;">
+                МАТЧ НАЧИНАЕТСЯ ЧЕРЕЗ <span id="matchup-countdown-num">3</span>...
+            </div>
+
+            <div style="display: flex; justify-content: center; margin-top: 20px;">
+                <button id="btn-ranked-cancel-search" class="btn btn-secondary" data-i18n="btn_cancel">Отмена</button>
+            </div>
+        </div>
+
+        <!-- 3. Экран P2P Комнат -->
+        <div id="ranked-view-rooms" class="ranked-view" style="display: none;">
+            <div class="room-sections-grid">
+                <!-- Секция: Создать комнату -->
+                <div class="room-box">
+                    <div class="room-box-title" data-i18n="room_create_title">СОЗДАТЬ КОМНАТУ</div>
+                    <div class="room-box-desc" data-i18n="room_create_desc">Сгенерируй код и поделись им с другом для прямой P2P игры</div>
+                    <button id="btn-room-create" class="btn btn-primary" data-i18n="btn_create_room">Создать комнату</button>
+
+                    <div id="room-created-panel" style="display: none; margin-top: 14px;">
+                        <div class="room-code-label" data-i18n="room_code_label">КОД КОМНАТЫ:</div>
+                        <div class="room-code-display" id="room-code-display">4821</div>
+                        <button id="btn-room-copy" class="btn btn-secondary btn-sm" style="margin-top: 8px;" data-i18n="btn_copy_code">Копировать код</button>
+                        <div class="room-waiting-indicator">
+                            <span class="pulse-dot"></span>
+                            <span data-i18n="room_waiting_guest">Ожидание соперника...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Секция: Войти в комнату -->
+                <div class="room-box">
+                    <div class="room-box-title" data-i18n="room_join_title">ВОЙТИ ПО КОДУ</div>
+                    <div class="room-box-desc" data-i18n="room_join_desc">Введи 4-значный код комнаты, созданной твоим другом</div>
+                    <div class="room-input-row">
+                        <input type="text" id="input-room-code" class="room-input" maxlength="4" placeholder="4821" autocomplete="off" />
+                        <button id="btn-room-join" class="btn btn-primary" data-i18n="btn_join">Войти</button>
+                    </div>
+                    <div id="room-join-status" class="room-join-status" style="display: none;"></div>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: center; margin-top: 20px;">
+                <button id="btn-rooms-back" class="btn btn-secondary" data-i18n="btn_back">Назад в лобби</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ ТОСТ ДОСТИЖЕНИЙ ═══════════════ -->
+<div id="toast-achievement" class="toast-achievement">
+    <div class="toast-ach-icon">
+        <svg class="svg-icon" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#ffd700" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+        </svg>
+    </div>
+    <div class="toast-ach-content">
+        <div class="toast-ach-header" data-i18n="toast_ach_unlocked">ДОСТИЖЕНИЕ РАЗБЛОКИРОВАНО!</div>
+        <div class="toast-ach-title" id="toast-ach-title">Первый гол</div>
+        <div class="toast-ach-reward" id="toast-ach-reward">+50 МОНЕТ</div>
+    </div>
+</div>
+
+<!-- ══════════════════ 13. ДОСТИЖЕНИЯ ═════════════════ -->
+<div id="overlay-achievements" class="overlay">
+    <div class="card wide achievements-modal-card">
+        <div class="card-title"><span data-i18n="achievements_title">ДОСТИЖЕНИЯ</span></div>
+        <div class="card-sub" data-i18n="achievements_sub">Выполняй эпические испытания и получай награды!</div>
+
+        <div class="achievements-summary">
+            <div class="ach-summary-stat">
+                <span class="ach-stat-val" id="ach-completed-count">0</span>
+                <span class="ach-stat-total">/ 20</span>
+                <span class="ach-stat-label" data-i18n="ach_completed_label">Выполнено</span>
+            </div>
+            <div class="ach-summary-stat">
+                <span class="ach-stat-val gold" id="ach-total-earned">0</span>
+                <span class="ach-stat-label" data-i18n="ach_coins_earned">Монет получено</span>
+            </div>
+        </div>
+
+        <div class="achievements-scroll-wrap" id="achievements-container">
+            <!-- Заполняется динамически через AchievementManager.render() -->
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 14px;">
+            <button id="btn-achievements-back" class="btn btn-secondary" data-i18n="btn_back">В меню</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ 14. СЕЗОННЫЙ БОЕВОЙ ПРОПУСК ════ -->
+<div id="overlay-battle-pass" class="overlay">
+    <div class="card wide battle-pass-modal-card">
+        <div class="card-title"><span data-i18n="bp_title">БОЕВОЙ ПРОПУСК</span></div>
+        <div class="card-sub" data-i18n="bp_sub">Сезон 1: Неоновый Шторм · 15 уровней наград</div>
+
+        <div class="bp-header-panel">
+            <div class="bp-header-top">
+                <div class="bp-level-info">
+                    <span class="bp-level-tag" data-i18n="bp_level">Уровень</span>
+                    <span class="bp-level-badge-large" id="bp-current-level">1</span>
+                    <span class="bp-level-total">/ 15</span>
+                </div>
+                <div class="bp-xp-info" id="bp-xp-text">0 / 200 XP</div>
+            </div>
+            <div class="bp-progress-bar-wrap">
+                <div class="bp-progress-bar" id="bp-progress-bar" style="width: 0%;"></div>
+            </div>
+            <div class="bp-vip-banner-wrap" id="bp-vip-banner">
+                <!-- Заполняется динамически через BattlePassManager.render() -->
+            </div>
+        </div>
+
+        <div class="bp-tiers-scroll-wrap" id="bp-tiers-container">
+            <!-- Заполняется динамически через BattlePassManager.render() -->
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 14px;">
+            <button id="btn-bp-back" class="btn btn-secondary" data-i18n="btn_back">В меню</button>
+        </div>
+    </div>
+</div>
+
+<script src="main.js"></script>
+</body>
+</html>
